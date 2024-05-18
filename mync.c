@@ -57,6 +57,7 @@ void tcp_server_socket(int port, int* fdsArr){
 }
 
 void tcp_client_socket(int port, char* address, int* fdsArr){
+
     int clientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (clientSocket == -1) {
         printf("Could not create socket");
@@ -83,10 +84,13 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
         exit(1);
     }
 
-    printf("connected to server\n");
-
     fdsArr[0] = clientSocket;
+    fdsArr[1] = clientSocket;
 }
+
+void udp_server_socket(int port, int* fdsArr){}
+
+void udp_client_socket(int port, char* address, int* fdsArr){}
 
 int argv_to_socket(char* str, int* fdsArr){
     int size = strlen(str);
@@ -97,43 +101,55 @@ int argv_to_socket(char* str, int* fdsArr){
     char protocol[4] = {str[0],str[1],str[2],'\0'};
     char type = str[3];
 
-    if (strcasecmp(protocol,"TCP")==0){
-        if(type == 'S') {
-            char* port;
-            strcpy(port,str+4);
-            tcp_server_socket(atoi(port), fdsArr);
+    if(type == 'S'){
+        char* portStr;
+        strcpy(portStr,str+4);
+        int port = atoi(portStr);
+        if (strcasecmp(protocol,"TCP")==0) {
+            tcp_server_socket(port, fdsArr);
             return 0;
         }
-        else if(type == 'C'){
-            char* address;
-            char* port;
-            for(int )
-            strcpy(port,str+strlen(strcp));
-            //tcp_client_socket(atoi(port),,fdsArr);
+        else if(strcasecmp(protocol,"UDP")==0){
+            udp_server_socket(port,fdsArr);
             return 0;
         }
-        else{
-            perror("no type");
+    }
+
+    else if(type == 'C'){
+        char* address;
+        char* portStr;
+        int sep;
+        for(int i=0;i< strlen(str);i++){
+            if(str[i] == ','){
+                sep = i;
+                break;
+            }
+        }
+        address = (char *) malloc(sizeof(char)*sep-4);
+        if(!address){
+            perror("malloc");
+            return 1;
+        }
+        strncpy(address,str+4,sizeof(char)*sep-4);
+        strcpy(portStr,str+sep+1);
+        int port = atoi(portStr);
+        if (strcasecmp(protocol,"TCP")==0) {
+            tcp_client_socket(port,address,fdsArr);
+            return 0;
+        }
+        else if(strcasecmp(protocol,"UDP")==0){
+            udp_client_socket(port,address,fdsArr);
             return 0;
         }
 
-    }
-    else if(strcasecmp(protocol,"UDP")==0){
-        if(type == 'S'){
-            //return udp_server_socket(atoi(port));
-        }
-        else if(type == 'C'){
-            return 0;
-            //return udp_client_socket(serverAddress,atoi(port));
-        }
-        else{
-            perror("no type");
-            return 0;
+        else {
+            exit(1);
         }
     }
-    else{
-        return 0;
+    else {
+        exit(1);
     }
+
     return 0;
 }
 
