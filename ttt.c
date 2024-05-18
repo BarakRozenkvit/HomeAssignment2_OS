@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <string.h>
+#include <libc.h>
 
 int isFinished(int board[3][3]) {
     int countFull = 0;
@@ -13,11 +14,11 @@ int isFinished(int board[3][3]) {
         }
 
         if (resHorizontal == 3 || resVertical == 3){
-            printf("I lost\n");
+            write(STDOUT_FILENO,"I lost\n",sizeof(char)*7);
             return 1;
         }
         if(resHorizontal == -3 || resVertical == -3) {
-            printf("i win\n");
+            write(STDOUT_FILENO,"I win\n",sizeof(char)*6);
             return 1;
         }
     }
@@ -29,23 +30,22 @@ int isFinished(int board[3][3]) {
         resDiagonal2 += board[2 - i][i];
     }
     if (resDiagoanl1 == 3 || resDiagonal2 == 3){
-        printf("I lost\n");
+        write(STDOUT_FILENO,"I lost\n",sizeof(char)*7);
         return 1;
     }
     if(resDiagoanl1 == -3 || resDiagonal2 == -3) {
-        printf("I win\n");
+        write(STDOUT_FILENO,"I win\n",sizeof(char)*6);
         return 1;
     }
 
     if(countFull == 9){
-        printf("DRAW");
+        write(STDOUT_FILENO,"DRAW\n",sizeof(char)*4);
         return 1;
     }
     return 0;
 }
 
 void ticTacToe(char* stratagy,size_t size){
-
     int board[3][3] = {{0}};
     int p = 0;
 
@@ -53,14 +53,15 @@ void ticTacToe(char* stratagy,size_t size){
         // Computer Turn
         while (p<size){
             int chooseComp = stratagy[p] - '0';
-            p++;
             int i = (chooseComp-1)/3;
             int j = (chooseComp-1) - 3*i;
             if (!board[i][j]) {
                 board[i][j] = -1;
-                printf("%d\n",chooseComp);
+                char out[2] = {stratagy[p],'\n'};
+                write(STDOUT_FILENO,out,sizeof(char)*2);
                 break;
             }
+            p++;
         }
 
         if(isFinished(board)){
@@ -69,9 +70,10 @@ void ticTacToe(char* stratagy,size_t size){
         while (1) {
             // User Turn
             int chooseUser;
-            scanf("%d", &chooseUser);
+            char in[1];
+            read(STDIN_FILENO,in,sizeof(char));
+            chooseUser = atoi(in);
             if (chooseUser <= 0 || chooseUser > 9) {
-                printf("Wrong Input\n");
                 continue;
             }
             int i = (chooseUser-1)/3;
@@ -80,7 +82,6 @@ void ticTacToe(char* stratagy,size_t size){
                 board[i][j] = 1;
                 break;
             }
-            printf("Try Again\n");
         }
 
         if(isFinished(board)){
@@ -88,7 +89,6 @@ void ticTacToe(char* stratagy,size_t size){
         }
     }
 }
-
 
 
 int main(int argc, char* argv[]) {
@@ -117,11 +117,5 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     }
-
     ticTacToe(argv[1],size);
-
-
-
-
-
 }
