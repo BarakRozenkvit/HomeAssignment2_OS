@@ -4,7 +4,7 @@
 
 
 void tcp_server_socket(int port, int* fdsArr){
-    int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP); // 0 means default protocol for stream sockets (Equivalently, IPPROTO_TCP)
+    int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listeningSocket == -1) {
         perror("socket");
         exit(1);
@@ -20,7 +20,7 @@ void tcp_server_socket(int port, int* fdsArr){
     struct sockaddr_in serverAddress;
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_addr.s_addr = INADDR_ANY; // any IP at this port (Address to accept any incoming messages)
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
     serverAddress.sin_port = htons(port);
 
     int bindResult = bind(listeningSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
@@ -37,7 +37,7 @@ void tcp_server_socket(int port, int* fdsArr){
         exit(1);
     }
 
-    printf("Waiting for incoming TCP-connections...\n");
+    printf("Server is Waiting for incoming TCP-connections on port: %d...\n",port);
     struct sockaddr_in clientAddress;  //
     socklen_t clientAddressLen = sizeof(clientAddress);
 
@@ -52,8 +52,6 @@ void tcp_server_socket(int port, int* fdsArr){
 
     fdsArr[0] = clientSocket;
     fdsArr[1] = listeningSocket;
-    fdsArr[2] = clientSocket;
-    fdsArr[3] = listeningSocket;
 }
 
 void tcp_client_socket(int port, char* address, int* fdsArr){
@@ -75,11 +73,13 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
         exit(1);
     }
 
-    // Make a connection to the server with socket SendingSocket.
+    printf("Client is waiting to connect on port: %d with server address: %s...\n",port,address);
+    printf("Press Enter after the server is up...\n");
+    char en;
+    scanf("%c",&en);
     int connectResult = connect(clientSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
     if (connectResult == -1) {
         printf("connect() failed with error code");
-        // cleanup the socket;
         close(clientSocket);
         exit(1);
     }
@@ -88,7 +88,35 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
     fdsArr[1] = clientSocket;
 }
 
-void udp_server_socket(int port, int* fdsArr){}
+void udp_server_socket(int port, int* fdsArr){
+
+    int serverSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (serverSocket == -1) {
+        printf("Could not create socket");
+        exit(1);
+    }
+
+    struct sockaddr_in serverAddress;
+    memset((char *)&serverAddress, 0, sizeof(serverAddress));
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+    int ret = inet_pton(AF_INET, (const char *)"127.0.0.1", &(serverAddress.sin_addr));
+    if (ret <= 0) {
+        printf("inet_pton() failed\n");
+        exit(1);
+    }
+
+    int bindResult = bind(serverSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+    if (bindResult == -1) {
+        printf("bind() failed with error code\n");
+        close(serverSocket);
+        exit(1);
+    }
+    printf("UDP Server is Binding on port: %d...\n",port);
+
+    fdsArr[0] = serverSocket;
+    fdsArr[1] = serverSocket;
+}
 
 void udp_client_socket(int port, char* address, int* fdsArr){}
 
@@ -102,7 +130,7 @@ int argv_to_socket(char* str, int* fdsArr){
     char type = str[3];
 
     if(type == 'S'){
-        char* portStr;
+        char* portStr[10];
         strcpy(portStr,str+4);
         int port = atoi(portStr);
         if (strcasecmp(protocol,"TCP")==0) {
@@ -130,6 +158,12 @@ int argv_to_socket(char* str, int* fdsArr){
             perror("malloc");
             return 1;
         }
+        portStr = (char *) malloc(sizeof(char)* strlen(str)-sep+1);
+        if(!portStr){
+            free(address);
+            perror("malloc");
+            return 1;
+        }
         strncpy(address,str+4,sizeof(char)*sep-4);
         strcpy(portStr,str+sep+1);
         int port = atoi(portStr);
@@ -146,6 +180,7 @@ int argv_to_socket(char* str, int* fdsArr){
             exit(1);
         }
     }
+
     else {
         exit(1);
     }
@@ -168,12 +203,15 @@ int main(int argc,char* argv[]){
                 strncat(process_path,process_name,sizeof(process_path) - strlen(process_path) - 1);
                 break;
             case 'i':
+                printf("Input functions as %s\n",optarg);
                 argv_to_socket(optarg,fds_input);
                 break;
             case 'o':
+                printf("Output function as %s\n",optarg);
                 argv_to_socket(optarg,fds_output);
                 break;
             case 'b':
+                printf("Getting I/O %s\n",optarg);
                 argv_to_socket(optarg,fds_input);
                 fds_output[0] = fds_input[0];
                 fds_output[1] = fds_input[1];
@@ -183,6 +221,7 @@ int main(int argc,char* argv[]){
 
     int pid_ttt = fork();
     if(!pid_ttt){
+
         int res0 = dup2(fds_input[0],0);
         if(res0 == -1){
             perror("dup2");
