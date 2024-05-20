@@ -51,12 +51,22 @@ int main(int argc, char* argv[]) {
     struct sockaddr_in serverAddress;
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
-    serverAddress.sin_port = htons(SERVER_PORT);
-    int rval = inet_pton(AF_INET, (const char *)SERVER_IP_ADDRESS, &serverAddress.sin_addr);
+    serverAddress.sin_port = htons(port);
+    int rval = inet_pton(AF_INET, (const char *)address, &serverAddress.sin_addr);
     if (rval <= 0) {
         printf("inet_pton() failed");
         return -1;
     }
+
+//    char message[2] = "Hi";
+//    int messageLen = strlen(message) + 1;
+//    int sendResult = sendto(clientSocket, message, messageLen, 0, (struct sockaddr *) &serverAddress,
+//                            sizeof(serverAddress));
+//    if (sendResult <= 0) {
+//        printf("sendto() failed with error code  : %d", errno);
+//        return -1;
+//    }
+
 
     while(1) {
         if (c == 'o' || c == 'b') {
@@ -67,22 +77,21 @@ int main(int argc, char* argv[]) {
 
             int recvLen = recvfrom(clientSocket, bufferReply, sizeof(bufferReply) - 1, 0,
                                    (struct sockaddr *) &fromAddress, &fromAddressSize);
-            if (recvLen == -1) {
+            if (recvLen <= 0) {
                 printf("recvfrom() failed with error code  : %d", errno);
                 return -1;
             }
 
-            printf("[%s:%d] Data: %s", inet_ntoa(fromAddress.sin_addr), ntohs(fromAddress.sin_port), bufferReply);
+            printf("%s",bufferReply);
         }
 
         if (c == 'i' || c == 'b') {
             char message[1];
             scanf("%s", message);
             int messageLen = strlen(message) + 1;
-            // send the message
             int sendResult = sendto(clientSocket, message, messageLen, 0, (struct sockaddr *) &serverAddress,
                                     sizeof(serverAddress));
-            if (sendResult == -1) {
+            if (sendResult <= 0) {
                 printf("sendto() failed with error code  : %d", errno);
                 return -1;
             }

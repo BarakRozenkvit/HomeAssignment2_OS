@@ -1,6 +1,8 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <libc.h>
+#include <string.h>
+#include <stdlib.h>
 
 
 void tcp_server_socket(int port, int* fdsArr){
@@ -74,9 +76,7 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
     }
 
     printf("Client is waiting to connect on port: %d with server address: %s...\n",port,address);
-    printf("Press Enter after the server is up...\n");
-    char en;
-    scanf("%c",&en);
+
     int connectResult = connect(clientSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
     if (connectResult == -1) {
         printf("connect() failed with error code");
@@ -114,11 +114,46 @@ void udp_server_socket(int port, int* fdsArr){
     }
     printf("UDP Server is Binding on port: %d...\n",port);
 
+//    struct sockaddr_in clientAddress;
+//    socklen_t clientAddressLen = sizeof(clientAddress);
+//    memset((char *)&clientAddress, 0, sizeof(clientAddress));
+//    char buffer[16] = {'\0'};
+//    int recv_len = recvfrom(serverSocket, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *) &clientAddress,
+//                            &clientAddressLen);
+//    if (recv_len <= 0) {
+//        printf("recvfrom() failed with error code");
+//        close(serverSocket);
+//        exit(1);
+//    }
+//    char clientIPAddrReadable[32] = {'\0'};
+//    inet_ntop(AF_INET, &clientAddress.sin_addr, clientIPAddrReadable, sizeof(clientIPAddrReadable));
+//    printf("Got my Client info!\n");
+
     fdsArr[0] = serverSocket;
     fdsArr[1] = serverSocket;
 }
 
-void udp_client_socket(int port, char* address, int* fdsArr){}
+void udp_client_socket(int port, char* address, int* fdsArr){
+
+    int clientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+    if (clientSocket == -1) {
+        printf("Could not create socket");
+        exit(1);
+    }
+
+    struct sockaddr_in serverAddress;
+    memset(&serverAddress, 0, sizeof(serverAddress));
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_port = htons(port);
+    int rval = inet_pton(AF_INET, (const char *)address, &serverAddress.sin_addr);
+    if (rval <= 0) {
+        printf("inet_pton() failed");
+        exit(1);
+    }
+
+    fdsArr[0] = clientSocket;
+    fdsArr[1] = clientSocket;
+}
 
 int argv_to_socket(char* str, int* fdsArr){
     int size = strlen(str);
@@ -192,16 +227,26 @@ int main(int argc,char* argv[]){
     char process_path[256];
     getcwd(process_path,sizeof(process_path));
     char process_name[256] = {'/','\0'};
+    char process_argv[256];
+    char* token;
     int fds_input[2] = {0,0};
     int fds_output[2] = {1,1};
+    int muteAlarm = 1;
+    int e_is_declared=0;
+    int timeout=0;
     int c=1;
     while (c != -1) {
-        c = getopt (argc, argv, "b:o:i:e:");
+        c = getopt (argc, argv, "t:b:o:i:e:");
         switch (c) {
             case 'e':
-                strcat(process_name,optarg);
+                e_is_declared = 1;
+                token = strsep(&optarg," ");
+                strcat(process_name,token);
                 strncat(process_path,process_name,sizeof(process_path) - strlen(process_path) - 1);
+                token = strsep(&optarg," ");
+                strcat(process_argv,token);
                 break;
+
             case 'i':
                 printf("Input functions as %s\n",optarg);
                 argv_to_socket(optarg,fds_input);
@@ -216,30 +261,65 @@ int main(int argc,char* argv[]){
                 fds_output[0] = fds_input[0];
                 fds_output[1] = fds_input[1];
                 break;
+            case 't':
+                muteAlarm = 0;
+                timeout = atoi(optarg);
+                break;
         }
     }
-
-    int pid_ttt = fork();
-    if(!pid_ttt){
-
-        int res0 = dup2(fds_input[0],0);
-        if(res0 == -1){
-            perror("dup2");
-            return 1;
+    if (e_is_declared) {
+        int pid_ttt = fork();
+        if (!pid_ttt) {
+            if (!muteAlarm) {
+                alarm(timeout);
+            }
+            int res0 = dup2(fds_input[0], 0);
+            if (res0 == -1) {
+                perror("dup2");
+                return 1;
+            }
+            int res1 = dup2(fds_output[0], 1);
+            if (res1 == -1) {
+                perror("dup2");
+                return 1;
+            }
+            execlp(process_path, process_name, process_argv, NULL);
+            perror("ttt");
+            exit(1);
         }
-        int res1 = dup2(fds_output[0],1);
-        if(res1 == -1){
-            perror("dup2");
-            return 1;
-        }
-
-        execlp(process_path,process_name,"123456789",NULL);
-        perror("ttt");
-        exit(1);
     }
+    else{
+        int pid_IO = fork();
+        if (!pid_IO) {
+            if(fds_output[0] == 1){fds_output[0] = 0;}
+            if(fds_input[0] == 0){fds_input[0] = 1;}
+
+            while (1) {
+                char buffer[16] = {'\0'};
+                int readBytes = read(fds_output[0], buffer, sizeof(char) * 16);
+                if (readBytes <= 0) {
+                    perror("read");
+                    exit(1);
+                }
+
+                if(fds_output[0] == fds_input[0]){
+                    write(STDOUT_FILENO, buffer, sizeof(char) * 16);
+                    read(STDIN_FILENO, buffer, sizeof(char) * 16);
+                }
+
+                int writeBytes = write(fds_input[0], buffer, sizeof(char) * 16);
+                if (writeBytes <= 0) {
+                    write(fds_input[1], NULL, 0);
+                    exit(1);
+                }
+            }
+
+        }
+    }
+    wait(NULL);
+    printf("Closing Connection...\n");
     close(fds_input[0]);
     close(fds_input[1]);
     close(fds_output[0]);
     close(fds_output[1]);
-    wait(NULL);
 }
