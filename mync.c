@@ -3,6 +3,7 @@
 #include <libc.h>
 #include <string.h>
 #include <stdlib.h>
+#include <netdb.h>
 
 
 void tcp_server_socket(int port, int* fdsArr){
@@ -58,6 +59,7 @@ void tcp_server_socket(int port, int* fdsArr){
 
 void tcp_client_socket(int port, char* address, int* fdsArr){
 
+
     int clientSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (clientSocket == -1) {
         printf("Could not create socket");
@@ -69,11 +71,13 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
 
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(port);
-    int rval = inet_pton(AF_INET, (const char *)address, &serverAddress.sin_addr);
-    if (rval <= 0) {
-        printf("inet_pton() failed");
+    struct hostent *server;
+    if ((server = gethostbyname(address)) == NULL) {
+        herror("gethostbyname");
         exit(1);
     }
+    memcpy(&(serverAddress.sin_addr), server->h_addr_list[0], sizeof(serverAddress.sin_addr));
+
 
     printf("Client is waiting to connect on port: %d with server address: %s...\n",port,address);
 
@@ -145,11 +149,13 @@ void udp_client_socket(int port, char* address, int* fdsArr){
     memset(&serverAddress, 0, sizeof(serverAddress));
     serverAddress.sin_family = AF_INET;
     serverAddress.sin_port = htons(port);
-    int rval = inet_pton(AF_INET, (const char *)address, &serverAddress.sin_addr);
-    if (rval <= 0) {
-        printf("inet_pton() failed");
+    struct hostent *server;
+    if ((server = gethostbyname(address)) == NULL) {
+        herror("gethostbyname");
         exit(1);
     }
+    memcpy(&(serverAddress.sin_addr), server->h_addr_list[0], sizeof(serverAddress.sin_addr));
+
 
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
@@ -297,8 +303,12 @@ int main(int argc,char* argv[]){
             while (1) {
                 char buffer[16] = {'\0'};
                 int readBytes = read(fds_output[0], buffer, sizeof(char) * 16);
-                if (readBytes <= 0) {
+                if (readBytes == -1){
                     perror("read");
+                    exit(1);
+                }
+                if (readBytes == 0) {
+                    printf("Connection Closed\n");
                     exit(1);
                 }
 
@@ -308,8 +318,12 @@ int main(int argc,char* argv[]){
                 }
 
                 int writeBytes = write(fds_input[0], buffer, sizeof(char) * 16);
-                if (writeBytes <= 0) {
-                    write(fds_input[1], NULL, 0);
+                if (writeBytes == -1){
+                    perror("write");
+                    exit(1);
+                }
+                if (writeBytes == 0) {
+                    printf("Write 0 bytes\n");
                     exit(1);
                 }
             }
