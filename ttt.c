@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <string.h>
-#include <libc.h>
+#include <unistd.h>
 #include <stdlib.h>
 
 int isFinished(int board[3][3]) {

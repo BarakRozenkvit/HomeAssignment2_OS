@@ -1,9 +1,10 @@
 #include <unistd.h>
+#include <stdio.h>
 #include <sys/socket.h>
-#include <libc.h>
 #include <string.h>
 #include <stdlib.h>
 #include <netdb.h>
+#include <arpa/inet.h>
 
 
 void tcp_server_socket(int port, int* fdsArr){
