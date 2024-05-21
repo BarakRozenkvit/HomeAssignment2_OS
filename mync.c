@@ -5,7 +5,109 @@
 #include <stdlib.h>
 #include <netdb.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <poll.h>
 
+
+#define BUFFER_SIZE 16
+#define MAXCLIENTS 10
+
+void tcpmux_server_socket(int port,int* fdsArr){
+    int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    if (listeningSocket == -1) {
+        perror("socket");
+        exit(1);
+    }
+
+    int enableReuse = 1;
+    int ret = setsockopt(listeningSocket, SOL_SOCKET, SO_REUSEADDR, &enableReuse, sizeof(int));
+    if (ret < 0) {
+        perror("setsockopt() failed with error code");
+        exit(1);
+    }
+
+    struct sockaddr_in serverAddress;
+    memset(&serverAddress, 0, sizeof(serverAddress));
+    serverAddress.sin_family = AF_INET;
+    serverAddress.sin_addr.s_addr = INADDR_ANY;
+    serverAddress.sin_port = htons(port);
+
+    int bindResult = bind(listeningSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+    if (bindResult == -1) {
+        perror("Bind failed with error code");
+        close(listeningSocket);
+        exit(1);
+    }
+
+    int listenResult = listen(listeningSocket, MAXCLIENTS);
+    if (listenResult == -1) {
+        printf("listen() failed with error code");
+        close(listeningSocket);
+        exit(1);
+    }
+
+    // Create array for storing client sockets and events
+    struct pollfd fds_poll[MAXCLIENTS];
+    memset(fds_poll,0,sizeof(fds_poll));
+
+    // Add listening socket for new connections
+    fds_poll[0].fd = listeningSocket;
+    fds_poll[0].events = POLLIN;
+
+    int current_clients = 0;
+    int running=1;
+
+    printf("Server is Waiting for incoming TCP-connections on port: %d...\n",port);
+    while(running){
+        // Start poll with not timeout == -1
+        int ret = poll(fds_poll,current_clients + 1,-1);
+        if(ret == -1){
+            perror("poll");
+            break;
+        }
+
+        // Handle events
+        for(int i=0;i<current_clients + 1 && running;i++){
+            if(fds_poll[i].fd == -1){
+                continue;
+            }
+
+            //Check for new connections
+            if(fds_poll[i].fd == listeningSocket && (fds_poll[i].revents & POLLIN)){
+                printf("Listening socket is changed\n");
+                // Code for accept like tcp_server
+                struct sockaddr_in clientAddress;  //
+                socklen_t clientAddressLen = sizeof(clientAddress);
+                memset(&clientAddress, 0, sizeof(clientAddress));
+                clientAddressLen = sizeof(clientAddress);
+                int clientSocket = accept(listeningSocket, (struct sockaddr *)&clientAddress, &clientAddressLen);
+                if (clientSocket == -1) {
+                    printf("listen failed with error code");
+                    close(listeningSocket);
+                    exit(1);
+                }
+
+                if(current_clients == MAXCLIENTS){
+                    printf("Max connections\n");
+                    close(clientSocket);
+                } else{
+                    fds_poll[current_clients + 1].fd = clientSocket;
+                    fds_poll[current_clients + 1].events = POLLIN;
+                    current_clients++;
+                    int pid_new_client = fork();
+                    if(!pid_new_client){
+                        fdsArr[0] = clientSocket;
+                        fdsArr[1] = clientSocket;
+                        running = 0;
+                        break;
+                    }
+                    printf("Client %d is connected, new pid is %d\n",current_clients,pid_new_client);
+                }
+
+            }
+        }
+    }
+}
 
 void tcp_server_socket(int port, int* fdsArr){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -118,21 +220,28 @@ void udp_server_socket(int port, int* fdsArr){
         exit(1);
     }
     printf("UDP Server is Binding on port: %d...\n",port);
+    struct sockaddr_in clientAddress;
+    socklen_t clientAddressLen = sizeof(clientAddress);
+    memset((char *)&clientAddress, 0, sizeof(clientAddress));
 
-//    struct sockaddr_in clientAddress;
-//    socklen_t clientAddressLen = sizeof(clientAddress);
-//    memset((char *)&clientAddress, 0, sizeof(clientAddress));
-//    char buffer[16] = {'\0'};
-//    int recv_len = recvfrom(serverSocket, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *) &clientAddress,
-//                            &clientAddressLen);
-//    if (recv_len <= 0) {
-//        printf("recvfrom() failed with error code");
-//        close(serverSocket);
-//        exit(1);
-//    }
-//    char clientIPAddrReadable[32] = {'\0'};
-//    inet_ntop(AF_INET, &clientAddress.sin_addr, clientIPAddrReadable, sizeof(clientIPAddrReadable));
-//    printf("Got my Client info!\n");
+    char buffer[BUFFER_SIZE];
+    int recv_len = recvfrom(serverSocket, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *) &clientAddress,
+                            &clientAddressLen);
+    if (recv_len <= 0) {
+        printf("recvfrom() failed with error code");
+        close(serverSocket);
+        exit(1);
+    }
+    char clientIPAddrReadable[32] = {'\0'};
+    inet_ntop(AF_INET, &clientAddress.sin_addr, clientIPAddrReadable, sizeof(clientIPAddrReadable));
+
+    // Saves the client credetials for write
+    int connectResult = connect(serverSocket, (struct sockaddr *)&clientAddress, sizeof(clientAddress));
+    if(connectResult < 0){
+        printf("\n Error : Connect Failed \n");
+        exit(1);
+    }
+    printf("Saved my Client Info!\n");
 
     fdsArr[0] = serverSocket;
     fdsArr[1] = serverSocket;
@@ -157,6 +266,22 @@ void udp_client_socket(int port, char* address, int* fdsArr){
     }
     memcpy(&(serverAddress.sin_addr), server->h_addr_list[0], sizeof(serverAddress.sin_addr));
 
+    char* message = "Hi";
+    int messageLen = strlen(message) + 1;
+    int sendResult = sendto(clientSocket, message, messageLen, 0, (struct sockaddr *) &serverAddress,
+                            sizeof(serverAddress));
+    if (sendResult <= 0) {
+        printf("sendto() failed with error code");
+    }
+
+    // Saves the client credetials for write
+    int connectResult = connect(clientSocket, (struct sockaddr *)&serverAddress, sizeof(serverAddress));
+    if(connectResult < 0){
+        printf("\n Error : Connect Failed \n");
+        exit(1);
+    }
+
+    printf("Saved my Server Info!\n");
 
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
@@ -186,6 +311,7 @@ int argv_to_socket(char* str, int* fdsArr){
     }
 
     else if(type == 'C'){
+        // TODO: make code prettier
         char* address;
         char* portStr;
         int sep;
@@ -223,6 +349,14 @@ int argv_to_socket(char* str, int* fdsArr){
         }
     }
 
+    if (type == 'M'){
+        char* portStr[10];
+        strcpy(portStr,str+7);
+        int port = atoi(portStr);
+        tcpmux_server_socket(port,fdsArr);
+        return 0;
+    }
+
     else {
         exit(1);
     }
@@ -231,6 +365,7 @@ int argv_to_socket(char* str, int* fdsArr){
 }
 
 int main(int argc,char* argv[]){
+    printf("Main PID: %d\n",getpid());
     char process_path[256];
     getcwd(process_path,sizeof(process_path));
     char process_name[256] = {'/','\0'};
@@ -274,6 +409,7 @@ int main(int argc,char* argv[]){
                 break;
         }
     }
+    int current_pid;
     if (e_is_declared) {
         int pid_ttt = fork();
         if (!pid_ttt) {
@@ -294,16 +430,21 @@ int main(int argc,char* argv[]){
             perror("ttt");
             exit(1);
         }
+        else{
+            current_pid = pid_ttt;
+            printf("ttt pid %d\n",current_pid);
+        }
     }
     else{
         int pid_IO = fork();
         if (!pid_IO) {
             if(fds_output[0] == 1){fds_output[0] = 0;}
             if(fds_input[0] == 0){fds_input[0] = 1;}
+            char buffer[BUFFER_SIZE] = {'\0'};
 
             while (1) {
-                char buffer[16] = {'\0'};
-                int readBytes = read(fds_output[0], buffer, sizeof(char) * 16);
+                memset(buffer,0, strlen(buffer));
+                int readBytes = read(fds_output[0], buffer, sizeof(char) * BUFFER_SIZE);
                 if (readBytes == -1){
                     perror("read");
                     exit(1);
@@ -314,11 +455,15 @@ int main(int argc,char* argv[]){
                 }
 
                 if(fds_output[0] == fds_input[0]){
-                    write(STDOUT_FILENO, buffer, sizeof(char) * 16);
-                    read(STDIN_FILENO, buffer, sizeof(char) * 16);
-                }
+                    write(STDOUT_FILENO, buffer, sizeof(char) * strlen(buffer));
+                    if(strstr(buffer,"I win") ||strstr(buffer,"I lost") || strstr(buffer,"DRAW")){
+                        exit(1);
+                    }
 
-                int writeBytes = write(fds_input[0], buffer, sizeof(char) * 16);
+                    memset(buffer,0, strlen(buffer));
+                    read(STDIN_FILENO, buffer, sizeof(char) *2);
+                }
+                int writeBytes = write(fds_input[0], buffer, sizeof(char) * strlen(buffer));
                 if (writeBytes == -1){
                     perror("write");
                     exit(1);
@@ -330,9 +475,13 @@ int main(int argc,char* argv[]){
             }
 
         }
+        else{
+            current_pid = pid_IO;
+            printf("IO pid %d\n",current_pid);
+        }
     }
     wait(NULL);
-    printf("Closing Connection...\n");
+    printf("Closing Connection... closing pid %d\n",current_pid);
     close(fds_input[0]);
     close(fds_input[1]);
     close(fds_output[0]);

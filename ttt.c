@@ -20,7 +20,6 @@ int isFinished(int board[3][3]) {
                 perror("write");
                 exit(1);
             }
-            //write(STDOUT_FILENO,NULL,0);
             return 1;
         }
         if(resHorizontal == -3 || resVertical == -3) {
@@ -29,8 +28,6 @@ int isFinished(int board[3][3]) {
                 perror("write");
                 exit(1);
             }
-            // Exit Message send nothing
-//            write(STDOUT_FILENO,NULL,0);
             return 1;
         }
     }
@@ -47,8 +44,6 @@ int isFinished(int board[3][3]) {
             perror("write");
             exit(1);
         }
-        // Exit Message send nothing
-//        write(STDOUT_FILENO,NULL,0);
         return 1;
     }
     if(resDiagoanl1 == -3 || resDiagonal2 == -3) {
@@ -57,8 +52,6 @@ int isFinished(int board[3][3]) {
             perror("write");
             exit(1);
         }
-        // Exit Message send nothing
-//        write(STDOUT_FILENO,NULL,0);
         return 1;
     }
 
@@ -68,28 +61,29 @@ int isFinished(int board[3][3]) {
             perror("write");
             exit(1);
         }
-        // Exit Message send nothing
-//        write(STDOUT_FILENO,NULL,0);
         return 1;
     }
     return 0;
 }
 
-void ticTacToe(char* stratagy,size_t size){
+void ticTacToe(char* stratagy,size_t size) {
     int board[3][3] = {{0}};
     int p = 0;
 
     while (1) {
+
+        if (isFinished(board)) {break;}
+
         // Computer Turn
-        while (p<size){
+        while (p < size) {
             int chooseComp = stratagy[p] - '0';
-            int i = (chooseComp-1)/3;
-            int j = (chooseComp-1) - 3*i;
+            int i = (chooseComp - 1) / 3;
+            int j = (chooseComp - 1) - 3 * i;
             if (!board[i][j]) {
                 board[i][j] = -1;
-                char out[2] = {stratagy[p],'\n'};
-                int writeBytes = write(STDOUT_FILENO,out,sizeof(char)*2);
-                if(writeBytes <= 0){
+                char out[2] = {stratagy[p], '\n'};
+                int writeBytes = write(STDOUT_FILENO, out, sizeof(char) * 2);
+                if (writeBytes <= 0) {
                     perror("write");
                     exit(1);
                 }
@@ -98,37 +92,39 @@ void ticTacToe(char* stratagy,size_t size){
             p++;
         }
 
-        if(isFinished(board)){
-            break;
-        }
+        if (isFinished(board)) {break;}
+
         while (1) {
             // User Turn
             int chooseUser;
             char in[2];
-            int readBytes = read(STDIN_FILENO,in,sizeof(char)*2);
-            if(readBytes<=0){
-                write(STDOUT_FILENO,NULL,0);
+            int readBytes = read(STDIN_FILENO, in, sizeof(char) * 2);
+            if (readBytes <= 0) {
+
                 return;
             }
-            chooseUser = atoi(in);
-            if (chooseUser <= 0 || chooseUser > 9) {
-                continue;
+            chooseUser = in[0] - '0';
+            // if number is between 0 and 9
+            if (chooseUser > 0 && chooseUser < 10) {
+                int i = (chooseUser - 1) / 3;
+                int j = (chooseUser - 1) - 3 * i;
+                // if is taken
+                if (!board[i][j]) {
+                    board[i][j] = 1;
+                    break;
+                }
+                else{
+                    write(STDOUT_FILENO, "Taken!\n", sizeof(char)*7);
+                }
+
+            }
+            else{
+                write(STDOUT_FILENO, "Bad Input!\n", sizeof(char)*11);
             }
 
-            int i = (chooseUser-1)/3;
-            int j = (chooseUser-1) - 3*i;
-            if (!board[i][j]) {
-                board[i][j] = 1;
-                break;
-            }
-        }
-
-        if(isFinished(board)){
-            break;
         }
     }
 }
-
 
 int main(int argc, char* argv[]) {
     if(argc != 2){
@@ -159,5 +155,6 @@ int main(int argc, char* argv[]) {
             return 1;
         }
     }
+
     ticTacToe(argv[1],size);
 }
