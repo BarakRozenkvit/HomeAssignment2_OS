@@ -7,10 +7,48 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <poll.h>
-
+#include <sys/errno.h>
 
 #define BUFFER_SIZE 16
-#define MAXCLIENTS 10
+#define MAX_SOCKETS 2
+
+typedef struct subprocess{
+    pid_t pid;
+    int socket;
+}subprocess;
+
+struct pollfd fds_poll[MAX_SOCKETS];
+subprocess pid_to_fds[MAX_SOCKETS];
+int available = 0;
+
+void handle_sigchld(int sig) {
+    // when signal is alerted do this function, convert pid to client socket
+    // and set in poll as assignble with new socket
+    pid_t child_pid;
+    int status;
+    while ((child_pid = waitpid(-1, &status, WNOHANG)) > 0) {
+        for(int i=0;i<=MAX_SOCKETS;i++) {
+            if (pid_to_fds[i].pid == child_pid) {
+                fds_poll[i].fd = -1;
+            }
+
+        }
+    }
+    if (child_pid == -1 && errno != ECHILD) {
+        perror("waitpid");
+    }
+}
+
+int get_next_slot(){
+    // if available got ovrt MAX_SOCKETS search in array for -1
+    // and return the index
+    available++;
+    if(available < MAX_SOCKETS){return available;}
+    for(int i=0; i<MAX_SOCKETS;i++){
+        if(fds_poll[i].fd == -1){return i;}
+    }
+    return -1;
+}
 
 void tcpmux_server_socket(int port,int* fdsArr){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
@@ -39,77 +77,79 @@ void tcpmux_server_socket(int port,int* fdsArr){
         exit(1);
     }
 
-    int listenResult = listen(listeningSocket, MAXCLIENTS);
+    int listenResult = listen(listeningSocket, MAX_SOCKETS);
     if (listenResult == -1) {
         printf("listen() failed with error code");
         close(listeningSocket);
         exit(1);
     }
 
-    // Create array for storing client sockets and events
-    struct pollfd fds_poll[MAXCLIENTS];
     memset(fds_poll,0,sizeof(fds_poll));
-
-    // Add listening socket for new connections
+    // Assign listening socket to slot 0 in poll
     fds_poll[0].fd = listeningSocket;
     fds_poll[0].events = POLLIN;
+    // activate signal SIGCHLD that goes to function when child is dead
+    signal(SIGCHLD,handle_sigchld);
 
-    int current_clients = 0;
     int running=1;
 
     printf("Server is Waiting for incoming TCP-connections on port: %d...\n",port);
     while(running){
         // Start poll with not timeout == -1
-        int ret = poll(fds_poll,current_clients + 1,-1);
+        int ret = poll(fds_poll, MAX_SOCKETS, -1);
         if(ret == -1){
             perror("poll");
             break;
         }
 
-        // Handle events
-        for(int i=0;i<current_clients + 1 && running;i++){
-            printf("%d\n",fds_poll[i].fd);
-            if(fds_poll[i].fd == -1){
-                continue;
-            }
-
-            //Check for new connections
-            if(fds_poll[i].fd == listeningSocket && (fds_poll[i].revents & POLLIN)){
-                printf("Listening socket is changed\n");
-                // Code for accept like tcp_server
+        for(int i=0; i < MAX_SOCKETS && running; i++) {
+            // Get New Connections
+            if (fds_poll[i].fd == listeningSocket && (fds_poll[i].revents & POLLIN)) {
                 struct sockaddr_in clientAddress;  //
                 socklen_t clientAddressLen = sizeof(clientAddress);
                 memset(&clientAddress, 0, sizeof(clientAddress));
                 clientAddressLen = sizeof(clientAddress);
-                int clientSocket = accept(listeningSocket, (struct sockaddr *)&clientAddress, &clientAddressLen);
+                int clientSocket = accept(listeningSocket, (struct sockaddr *) &clientAddress, &clientAddressLen);
                 if (clientSocket == -1) {
                     printf("listen failed with error code");
                     close(listeningSocket);
                     exit(1);
                 }
-                if(current_clients == MAXCLIENTS){
+                // Get Next available slot
+                int slot = get_next_slot();
+                if(slot == -1){
                     printf("Max connections\n");
                     close(clientSocket);
                 }
-                else{
-                    fds_poll[current_clients + 1].fd = clientSocket;
-                    fds_poll[current_clients + 1].events = POLLIN;
-                    current_clients++;
+                else {
+                    // Put client in poll in slot
+                    fds_poll[slot].fd = clientSocket;
+                    fds_poll[slot].events = POLLIN;
+                    printf("Client %d is Connected\n",slot);
+                    // Create child process that breaks this loop and continues to main function
+                    // and closes the client socket and listen socket when finishing
                     int pid_new_client = fork();
-                    if(!pid_new_client){
+                    if (!pid_new_client) {
                         fdsArr[0] = clientSocket;
-                        fdsArr[1] = clientSocket;
+                        fdsArr[1] = listeningSocket;
                         running = 0;
                         break;
                     }
-                    printf("Client %d is connected, new pid is %d\n",current_clients,pid_new_client);
+                    // Father process that adds the socket and pid to array and closes the client socket
+                    else {
+                        subprocess proc;
+                        proc.pid = pid_new_client;
+                        proc.socket = clientSocket;
+                        pid_to_fds[slot] = proc;
+                        close(clientSocket);
+                    }
                 }
-
             }
         }
     }
 }
 
+// TODO: check close connection on tcp client and server
 void tcp_server_socket(int port, int* fdsArr){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listeningSocket == -1) {
@@ -195,7 +235,7 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
 }
-
+// TODO: check close connection on udp client and server
 void udp_server_socket(int port, int* fdsArr){
 
     int serverSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -366,7 +406,6 @@ int argv_to_socket(char* str, int* fdsArr){
 }
 
 int main(int argc,char* argv[]){
-    printf("Main PID: %d\n",getpid());
     char process_path[256];
     getcwd(process_path,sizeof(process_path));
     char process_name[256] = {'/','\0'};
@@ -410,7 +449,6 @@ int main(int argc,char* argv[]){
                 break;
         }
     }
-    int current_pid;
     if (e_is_declared) {
         int pid_ttt = fork();
         if (!pid_ttt) {
@@ -430,10 +468,6 @@ int main(int argc,char* argv[]){
             execlp(process_path, process_name, process_argv, NULL);
             perror("ttt");
             exit(1);
-        }
-        else{
-            current_pid = pid_ttt;
-            printf("ttt pid %d\n",current_pid);
         }
     }
     else{
@@ -476,13 +510,9 @@ int main(int argc,char* argv[]){
             }
 
         }
-        else{
-            current_pid = pid_IO;
-            printf("IO pid %d\n",current_pid);
-        }
     }
     wait(NULL);
-    printf("Closing Connection... closing pid %d\n",current_pid);
+    printf("Closing Connection...\n");// closing pid %d\n",current_pid);
     close(fds_input[0]);
     close(fds_input[1]);
     close(fds_output[0]);
