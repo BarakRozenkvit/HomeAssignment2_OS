@@ -68,6 +68,7 @@ void tcpmux_server_socket(int port,int* fdsArr){
 
         // Handle events
         for(int i=0;i<current_clients + 1 && running;i++){
+            printf("%d\n",fds_poll[i].fd);
             if(fds_poll[i].fd == -1){
                 continue;
             }
@@ -86,11 +87,11 @@ void tcpmux_server_socket(int port,int* fdsArr){
                     close(listeningSocket);
                     exit(1);
                 }
-
                 if(current_clients == MAXCLIENTS){
                     printf("Max connections\n");
                     close(clientSocket);
-                } else{
+                }
+                else{
                     fds_poll[current_clients + 1].fd = clientSocket;
                     fds_poll[current_clients + 1].events = POLLIN;
                     current_clients++;
