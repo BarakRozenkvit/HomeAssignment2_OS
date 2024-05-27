@@ -23,7 +23,13 @@ struct pollfd fds_poll[MAX_SOCKETS];
 subprocess pid_to_fds[MAX_SOCKETS];
 int available = 0;
 
+void uds_tcp_server_socket();
 
+void uds_tcp_client_socket();
+
+void uds_udp_server_socket();
+
+void uds_udp_client_socket();
 
 void handle_sigchld(int sig) {
     // when signal is alerted do this function, convert pid to client socket
