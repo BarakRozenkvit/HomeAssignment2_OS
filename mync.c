@@ -8,6 +8,7 @@
 #include <netinet/in.h>
 #include <poll.h>
 #include <sys/errno.h>
+#include <sys/un.h>
 
 #define BUFFER_SIZE 16
 #define MAX_SOCKETS 10
@@ -23,13 +24,142 @@ struct pollfd fds_poll[MAX_SOCKETS];
 subprocess pid_to_fds[MAX_SOCKETS];
 int available = 0;
 
-void uds_tcp_server_socket();
+void uds_tcp_server_socket(char* path,int* fdsArr){
 
-void uds_tcp_client_socket();
+    unlink(path);
 
-void uds_udp_server_socket();
+    int serverSocket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (serverSocket == -1) {
+        perror("socket");
+        exit(1);
+    }
 
-void uds_udp_client_socket();
+    // Bind the socket to a file path
+    struct sockaddr_un address;
+    address.sun_family = AF_UNIX;
+    strcpy(address.sun_path, path);
+    int bind_result = bind(serverSocket, (struct sockaddr*) &address, sizeof(address));
+    if (bind_result == -1) {
+        perror("bind");
+        exit(1);
+    }
+
+    // Listen for connections
+    int listener = listen(serverSocket, 0);
+    if (listener == -1) {
+        perror("listen");
+        exit(1);
+    }
+
+    printf("Server is Waiting for incoming UDS-TCP-connections\n");
+
+    // Accept a connection
+    int client_socket = accept(serverSocket, NULL, NULL);
+    if (client_socket == -1) {
+        perror("accept");
+        exit(1);
+    }
+
+    fdsArr[0] = client_socket;
+    fdsArr[1] = serverSocket;
+}
+
+void uds_tcp_client_socket(char* path,int* fdsArr){
+
+    int clientSocket = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (clientSocket == -1) {
+        perror("socket");
+        exit(1);
+    }
+
+    // Connect to the server
+    struct sockaddr_un address;
+    address.sun_family = AF_UNIX;
+    strcpy(address.sun_path, path);
+    int connect_result = connect(clientSocket, (struct sockaddr*) &address, sizeof(address));
+    if (connect_result == -1) {
+        perror("connect");
+        exit(1);
+    }
+
+    fdsArr[0] = clientSocket;
+    fdsArr[1] = clientSocket;
+}
+
+void uds_udp_server_socket(char* path,int* fdsArr){
+    unlink(path);
+
+    int serverSocket = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (serverSocket == -1) {
+        perror("socket");
+        exit(1);
+    }
+
+    struct sockaddr_un serverAddress;
+    serverAddress.sun_family = AF_UNIX;
+    strcpy(serverAddress.sun_path, path);
+    int bind_result = bind(serverSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress));
+    if (bind_result == -1) {
+        perror("bind");
+        exit(1);
+    }
+
+    printf("UDS-UDP Server is Binding on path: %s...\n",path);
+
+    char buffer[BUFFER_SIZE];
+    struct sockaddr_un clientAddress;
+    socklen_t clientAddressLen = sizeof(clientAddress);
+    int recv_len = recvfrom(serverSocket, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *) &clientAddress,
+                            &clientAddressLen);
+    if (recv_len <= 0) {
+        printf("recvfrom() failed with error code");
+        close(serverSocket);
+        exit(1);
+    }
+
+    int connectResult = connect(serverSocket, (struct sockaddr*) &clientAddress, sizeof(clientAddress));
+    if(connectResult < 0){
+        printf("\n Error : Connect Failed \n");
+        exit(1);
+    }
+    printf("Saved my Client Info!\n");
+
+
+    fdsArr[0] = serverSocket;
+    fdsArr[1] = serverSocket;
+}
+
+void uds_udp_client_socket(char* path,int* fdsArr){
+
+    int clientSocket = socket(AF_UNIX, SOCK_DGRAM, 0);
+    if (clientSocket == -1) {
+        perror("socket");
+        exit(1);
+    }
+
+    struct sockaddr_un serverAddress;
+    serverAddress.sun_family = AF_UNIX;
+    strcpy(serverAddress.sun_path, path);
+
+    char* message = "Hi";
+    int messageLen = strlen(message) + 1;
+    int sendResult = sendto(clientSocket, message, messageLen, 0, (struct sockaddr *) &serverAddress,
+                            sizeof(serverAddress));
+    if (sendResult <= 0) {
+        printf("sendto() failed with error code");
+    }
+
+    // Saves the client credetials for write
+    int connectResult = connect(clientSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress));
+    if(connectResult < 0){
+        printf("\n Error : Connect Failed \n");
+        exit(1);
+    }
+    printf("Saved my Server Info!\n");
+
+    fdsArr[0] = clientSocket;
+    fdsArr[1] = clientSocket;
+}
 
 void handle_sigchld(int sig) {
     // when signal is alerted do this function, convert pid to client socket
@@ -343,12 +473,29 @@ int argv_to_socket(char* str, int* fdsArr){
         perror("bad input");
         exit(1);
     }
-    // UDP/ TCP / TCPMUSX / USSD
+    // UDP/ TCP / TCPMUSX / UDC
     char protocol[4] = {str[0],str[1],str[2],'\0'};
     // C / S / M
     char type = str[3];
 
     if(type == 'S'){
+        if(strcasecmp(protocol,"UDS")==0){
+            int size = strlen(str+4);
+            char* path = (char *) malloc(sizeof(char)*size);
+            if(!path){
+                perror("malloc");
+                exit(1);
+            }
+            strcpy(path,str+5);
+            if(str[4] == 'S') {
+                uds_tcp_server_socket(path,fdsArr);
+                return 0;
+            }
+            else if(str[4] == 'D'){
+                uds_udp_server_socket(path,fdsArr);
+                return 0;
+            }
+        }
         // fill port info
         char* portStr[10];
         strcpy(portStr,str+4);
@@ -365,6 +512,23 @@ int argv_to_socket(char* str, int* fdsArr){
     }
 
     else if(type == 'C'){
+        if(strcasecmp(protocol,"UDS")==0) {
+            int size = strlen(str + 4);
+            char *path = (char *) malloc(sizeof(char) * size);
+            if (!path) {
+                perror("malloc");
+                exit(1);
+            }
+            strcpy(path, str + 5);
+            if (str[4] == 'S') {
+                uds_tcp_client_socket(path, fdsArr);
+                return 0;
+            }
+            if (str[4] == 'D') {
+                uds_udp_client_socket(path, fdsArr);
+                return 0;
+            }
+        }
         // TODO: make code prettier
         char* address;
         char* portStr;
@@ -397,7 +561,6 @@ int argv_to_socket(char* str, int* fdsArr){
             udp_client_socket(port,address,fdsArr);
             return 0;
         }
-
         else {
             exit(1);
         }
