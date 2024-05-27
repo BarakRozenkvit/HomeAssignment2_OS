@@ -10,7 +10,9 @@
 #include <sys/errno.h>
 
 #define BUFFER_SIZE 16
-#define MAX_SOCKETS 2
+#define MAX_SOCKETS 10
+
+int e_is_declared=0;
 
 typedef struct subprocess{
     pid_t pid;
@@ -334,13 +336,17 @@ int argv_to_socket(char* str, int* fdsArr){
         perror("bad input");
         exit(1);
     }
+    // UDP/ TCP / TCPMUSX / USSD
     char protocol[4] = {str[0],str[1],str[2],'\0'};
+    // C / S / M
     char type = str[3];
 
     if(type == 'S'){
+        // fill port info
         char* portStr[10];
         strcpy(portStr,str+4);
         int port = atoi(portStr);
+
         if (strcasecmp(protocol,"TCP")==0) {
             tcp_server_socket(port, fdsArr);
             return 0;
@@ -406,21 +412,31 @@ int argv_to_socket(char* str, int* fdsArr){
 }
 
 int main(int argc,char* argv[]){
+    // String for saving current path of executable
     char process_path[256];
     getcwd(process_path,sizeof(process_path));
+    // save the process name - ttt and arguments
     char process_name[256] = {'/','\0'};
     char process_argv[256];
+    // for strok - split string
     char* token;
+    // file descriptors for sockets, deafult is STDIN or STDOUT
+    // index 0 - for client socket, index 1 - for listening socket
     int fds_input[2] = {0,0};
     int fds_output[2] = {1,1};
+    // argument to alarm for UDP
     int muteAlarm = 1;
-    int e_is_declared=0;
+    // for running with or without -e
+//    int e_is_declared=0;
+    // timeout parameter
     int timeout=0;
+
     int c=1;
     while (c != -1) {
         c = getopt (argc, argv, "t:b:o:i:e:");
         switch (c) {
             case 'e':
+                // this fills info for running the program
                 e_is_declared = 1;
                 token = strsep(&optarg," ");
                 strcat(process_name,token);
@@ -432,16 +448,33 @@ int main(int argc,char* argv[]){
             case 'i':
                 printf("Input functions as %s\n",optarg);
                 argv_to_socket(optarg,fds_input);
+                if(!e_is_declared) {
+                    memset(fds_poll,0,sizeof(fds_poll));
+                    fds_poll[0].fd = fds_input[0];
+                    fds_poll[0].events = POLLIN;
+                }
                 break;
             case 'o':
                 printf("Output function as %s\n",optarg);
                 argv_to_socket(optarg,fds_output);
+                if(!e_is_declared) {
+                    memset(fds_poll,0,sizeof(fds_poll));
+                    fds_poll[1].fd = STDIN_FILENO;
+                    fds_poll[1].events = POLLIN;
+                }
                 break;
             case 'b':
                 printf("Getting I/O %s\n",optarg);
                 argv_to_socket(optarg,fds_input);
                 fds_output[0] = fds_input[0];
                 fds_output[1] = fds_input[1];
+                if(!e_is_declared) {
+                    memset(fds_poll,0,sizeof(fds_poll));
+                    fds_poll[0].fd = fds_input[0];
+                    fds_poll[0].events = POLLIN;
+                    fds_poll[1].fd = STDIN_FILENO;
+                    fds_poll[1].events = POLLIN;
+                }
                 break;
             case 't':
                 muteAlarm = 0;
@@ -471,15 +504,15 @@ int main(int argc,char* argv[]){
         }
     }
     else{
-        int pid_IO = fork();
-        if (!pid_IO) {
-            if(fds_output[0] == 1){fds_output[0] = 0;}
-            if(fds_input[0] == 0){fds_input[0] = 1;}
-            char buffer[BUFFER_SIZE] = {'\0'};
-
-            while (1) {
+        char buffer[BUFFER_SIZE] = {'\0'};
+        while (1) {
+            int ret = poll(fds_poll, MAX_SOCKETS, -1);
+            if(ret == -1){
+                perror("poll");
+            }
+            if (fds_poll[0].revents & POLLIN) {
                 memset(buffer,0, strlen(buffer));
-                int readBytes = read(fds_output[0], buffer, sizeof(char) * BUFFER_SIZE);
+                int readBytes = read(fds_input[0], buffer, sizeof(char) * BUFFER_SIZE);
                 if (readBytes == -1){
                     perror("read");
                     exit(1);
@@ -488,27 +521,27 @@ int main(int argc,char* argv[]){
                     printf("Connection Closed\n");
                     exit(1);
                 }
-
-                if(fds_output[0] == fds_input[0]){
-                    write(STDOUT_FILENO, buffer, sizeof(char) * strlen(buffer));
-                    if(strstr(buffer,"I win") ||strstr(buffer,"I lost") || strstr(buffer,"DRAW")){
-                        exit(1);
-                    }
-
-                    memset(buffer,0, strlen(buffer));
-                    read(STDIN_FILENO, buffer, sizeof(char) *2);
-                }
-                int writeBytes = write(fds_input[0], buffer, sizeof(char) * strlen(buffer));
-                if (writeBytes == -1){
-                    perror("write");
-                    exit(1);
-                }
-                if (writeBytes == 0) {
-                    printf("Write 0 bytes\n");
+                write(STDOUT_FILENO, buffer, sizeof(char) * strlen(buffer));
+                if(strstr(buffer,"I win") ||strstr(buffer,"I lost") || strstr(buffer,"DRAW")){
                     exit(1);
                 }
             }
-
+            else if(fds_poll[1].revents & POLLIN){
+                memset(buffer,0, strlen(buffer));
+                int readBytes = read(STDIN_FILENO, buffer, sizeof(char) * BUFFER_SIZE);
+                if (readBytes == -1){
+                    perror("read");
+                    exit(1);
+                }
+                if (readBytes == 0) {
+                    printf("Connection Closed\n");
+                    exit(1);
+                }
+                write(fds_output[0], buffer, sizeof(char) * strlen(buffer));
+                if(strstr(buffer,"I win") ||strstr(buffer,"I lost") || strstr(buffer,"DRAW")){
+                    exit(1);
+                }
+            }
         }
     }
     wait(NULL);
