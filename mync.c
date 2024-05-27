@@ -23,6 +23,8 @@ struct pollfd fds_poll[MAX_SOCKETS];
 subprocess pid_to_fds[MAX_SOCKETS];
 int available = 0;
 
+
+
 void handle_sigchld(int sig) {
     // when signal is alerted do this function, convert pid to client socket
     // and set in poll as assignble with new socket
@@ -448,6 +450,7 @@ int main(int argc,char* argv[]){
                 printf("Input functions as %s\n",optarg);
                 argv_to_socket(optarg,fds_input);
                 if(!e_is_declared) {
+                    // if e is not declared, watch socket(get data).
                     memset(fds_poll,0,sizeof(fds_poll));
                     fds_poll[0].fd = fds_input[0];
                     fds_poll[0].events = POLLIN | POLLHUP;
@@ -457,6 +460,7 @@ int main(int argc,char* argv[]){
                 printf("Output function as %s\n",optarg);
                 argv_to_socket(optarg,fds_output);
                 if(!e_is_declared) {
+                    // if e is not declared, watch socket(get close) and STDIN.
                     memset(fds_poll,0,sizeof(fds_poll));
                     fds_poll[0].fd = fds_output[0];
                     fds_poll[0].events = POLLIN | POLLHUP;
@@ -470,6 +474,7 @@ int main(int argc,char* argv[]){
                 fds_output[0] = fds_input[0];
                 fds_output[1] = fds_input[1];
                 if(!e_is_declared) {
+                    // if e is not declared, watch socket(get data) and watch STDIN.
                     memset(fds_poll,0,sizeof(fds_poll));
                     fds_poll[0].fd = fds_input[0];
                     fds_poll[0].events = POLLIN | POLLHUP;
@@ -537,6 +542,7 @@ int main(int argc,char* argv[]){
                     perror("write");
                 }
             }
+            // if Changed in STDIN read and write to socket
             else if(fds_poll[1].revents & POLLIN){
                 memset(buffer,0, strlen(buffer));
                 int readBytes = read(STDIN_FILENO, buffer, sizeof(char) * BUFFER_SIZE);
