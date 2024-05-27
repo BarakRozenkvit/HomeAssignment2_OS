@@ -151,7 +151,6 @@ void tcpmux_server_socket(int port,int* fdsArr){
     }
 }
 
-// TODO: check close connection on tcp client and server
 void tcp_server_socket(int port, int* fdsArr){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listeningSocket == -1) {
@@ -237,7 +236,7 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
 }
-// TODO: check close connection on udp client and server
+
 void udp_server_socket(int port, int* fdsArr){
 
     int serverSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -451,7 +450,7 @@ int main(int argc,char* argv[]){
                 if(!e_is_declared) {
                     memset(fds_poll,0,sizeof(fds_poll));
                     fds_poll[0].fd = fds_input[0];
-                    fds_poll[0].events = POLLIN;
+                    fds_poll[0].events = POLLIN | POLLHUP;
                 }
                 break;
             case 'o':
@@ -459,6 +458,8 @@ int main(int argc,char* argv[]){
                 argv_to_socket(optarg,fds_output);
                 if(!e_is_declared) {
                     memset(fds_poll,0,sizeof(fds_poll));
+                    fds_poll[0].fd = fds_output[0];
+                    fds_poll[0].events = POLLIN | POLLHUP;
                     fds_poll[1].fd = STDIN_FILENO;
                     fds_poll[1].events = POLLIN;
                 }
@@ -471,7 +472,7 @@ int main(int argc,char* argv[]){
                 if(!e_is_declared) {
                     memset(fds_poll,0,sizeof(fds_poll));
                     fds_poll[0].fd = fds_input[0];
-                    fds_poll[0].events = POLLIN;
+                    fds_poll[0].events = POLLIN | POLLHUP;
                     fds_poll[1].fd = STDIN_FILENO;
                     fds_poll[1].events = POLLIN;
                 }
@@ -504,46 +505,59 @@ int main(int argc,char* argv[]){
         }
     }
     else{
+        if (!muteAlarm) {
+            alarm(timeout);
+        }
         char buffer[BUFFER_SIZE] = {'\0'};
         while (1) {
             int ret = poll(fds_poll, MAX_SOCKETS, -1);
             if(ret == -1){
                 perror("poll");
             }
-            if (fds_poll[0].revents & POLLIN) {
+
+            // if Server closed the connection from socket, break
+            if(fds_poll[0].revents & POLLHUP){
+                break;
+            }
+            // if Changed in socket read from socket and write to screen
+            else if (fds_poll[0].revents & POLLIN) {
                 memset(buffer,0, strlen(buffer));
                 int readBytes = read(fds_input[0], buffer, sizeof(char) * BUFFER_SIZE);
-                if (readBytes == -1){
+                if(readBytes == -1){
                     perror("read");
                     exit(1);
                 }
-                if (readBytes == 0) {
-                    printf("Connection Closed\n");
-                    exit(1);
+                if (readBytes == 0){
+                    printf("Closing Connection...\n");
+                    break;
                 }
-                write(STDOUT_FILENO, buffer, sizeof(char) * strlen(buffer));
-                if(strstr(buffer,"I win") ||strstr(buffer,"I lost") || strstr(buffer,"DRAW")){
-                    exit(1);
+
+                int writeBytes = write(STDOUT_FILENO, buffer, sizeof(char) * strlen(buffer));
+                if(writeBytes <= 0) {
+                    perror("write");
                 }
             }
             else if(fds_poll[1].revents & POLLIN){
                 memset(buffer,0, strlen(buffer));
                 int readBytes = read(STDIN_FILENO, buffer, sizeof(char) * BUFFER_SIZE);
-                if (readBytes == -1){
+                if(readBytes == -1){
                     perror("read");
                     exit(1);
                 }
-                if (readBytes == 0) {
-                    printf("Connection Closed\n");
-                    exit(1);
+                if (readBytes == 0){
+                    printf("Closing Connection...\n");
+                    break;
                 }
-                write(fds_output[0], buffer, sizeof(char) * strlen(buffer));
-                if(strstr(buffer,"I win") ||strstr(buffer,"I lost") || strstr(buffer,"DRAW")){
-                    exit(1);
+
+                int writeBytes = write(fds_output[0], buffer, sizeof(char) * strlen(buffer));
+                if(writeBytes <= 0){
+                    printf("Closing Connection...\n");
+                    perror("write");
                 }
             }
         }
     }
+
     wait(NULL);
     printf("Closing Connection...\n");// closing pid %d\n",current_pid);
     close(fds_input[0]);
