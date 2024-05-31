@@ -534,7 +534,7 @@ int main(int argc,char* argv[]){
 //    char process_path[256] = {'.','/','\0'};
     //getcwd(process_path,sizeof(process_path));
     // save the process name - ttt and arguments
-    char process_name[256] = {'\0'};
+    char process_name[256] = {'.','/','\0'};
     char process_argv[256] ={'\0'};
     // for strok - split string
     char* token;
