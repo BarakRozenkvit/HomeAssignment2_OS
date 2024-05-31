@@ -14,17 +14,23 @@
 #define BUFFER_SIZE 16
 #define MAX_SOCKETS 10
 
+// global variable if -e is declared
 int e_is_declared=0;
 
 typedef struct subprocess{
     pid_t pid;
     int socket;
 }subprocess;
-
+// global variable for poll and removing unactive sockets from poll in signal handler
 struct pollfd fds_poll[MAX_SOCKETS];
 subprocess pid_to_fds[MAX_SOCKETS];
 int available = 0;
 
+/**
+ * Setting up UDS TCP Server socket
+ * @param path - socket path
+ * @param fdsArr - array of file descriptors to save socket in
+ */
 void uds_tcp_server_socket(char* path,int* fdsArr){
 
     unlink(path);
@@ -64,7 +70,11 @@ void uds_tcp_server_socket(char* path,int* fdsArr){
     fdsArr[0] = client_socket;
     fdsArr[1] = serverSocket;
 }
-
+/**
+ * Setting up UDS TCP Client socket
+ * @param path - socket path
+ * @param fdsArr - array of file descriptors to save socket in
+ */
 void uds_tcp_client_socket(char* path,int* fdsArr){
 
     int clientSocket = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -86,7 +96,12 @@ void uds_tcp_client_socket(char* path,int* fdsArr){
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
 }
-
+/**
+ * Handler to deal with dead clients and delete their socket from poll.
+ * when signal is alerted do this function, convert pid to client socket
+ * and set in poll the index to -1
+ * @param sig
+ */
 void handle_sigchld(int sig) {
     // when signal is alerted do this function, convert pid to client socket
     // and set in poll as assignble with new socket
@@ -104,7 +119,10 @@ void handle_sigchld(int sig) {
         perror("waitpid");
     }
 }
-
+/**
+ * Funtion that looks for available slot in poll
+ * @return index
+ */
 int get_next_slot(){
     // if available got ovrt MAX_SOCKETS search in array for -1
     // and return the index
@@ -115,7 +133,11 @@ int get_next_slot(){
     }
     return -1;
 }
-
+/**
+ * Setting up TCP I/O MUX Server
+ * @param port
+ * @param fdsArr - array to save the socket in
+ */
 void tcpmux_server_socket(int port,int* fdsArr){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listeningSocket == -1) {
@@ -214,7 +236,11 @@ void tcpmux_server_socket(int port,int* fdsArr){
         }
     }
 }
-
+/**
+ * Setting up TCP Sever
+ * @param port
+ * @param fdsArr - array to save the socket in
+ */
 void tcp_server_socket(int port, int* fdsArr){
     int listeningSocket = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listeningSocket == -1) {
@@ -265,7 +291,12 @@ void tcp_server_socket(int port, int* fdsArr){
     fdsArr[0] = clientSocket;
     fdsArr[1] = listeningSocket;
 }
-
+/**
+ * Setting up TCP Client
+ * @param port - Server Socket
+ * @param address - Server Address
+ * @param fdsArr - array to save the socket in
+ */
 void tcp_client_socket(int port, char* address, int* fdsArr){
 
 
@@ -300,7 +331,11 @@ void tcp_client_socket(int port, char* address, int* fdsArr){
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
 }
-
+/**
+ * Setting up UDP Sever
+ * @param port
+ * @param fdsArr - array to save the socket in
+ */
 void udp_server_socket(int port, int* fdsArr){
 
     int serverSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -352,7 +387,12 @@ void udp_server_socket(int port, int* fdsArr){
     fdsArr[0] = serverSocket;
     fdsArr[1] = serverSocket;
 }
-
+/**
+ * Setting up UDP Client
+ * @param port - Server Socket
+ * @param address - Server Address
+ * @param fdsArr - array to save the socket in
+ */
 void udp_client_socket(int port, char* address, int* fdsArr){
 
     int clientSocket = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
@@ -392,7 +432,12 @@ void udp_client_socket(int port, char* address, int* fdsArr){
     fdsArr[0] = clientSocket;
     fdsArr[1] = clientSocket;
 }
-
+/**
+ * converts string argument to socket setup
+ * @param str - argument
+ * @param fdsArr - array to save socket in
+ * @return
+ */
 int argv_to_socket(char* str, int* fdsArr){
     // UDP/ TCP / TCPMUSX / UDC
     char protocol[4] = {str[0],str[1],str[2],'\0'};
