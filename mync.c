@@ -419,7 +419,6 @@ int argv_to_socket(char* str, int* fdsArr){
             }
         }
 
-        // fill port info
         char portStr[16];
         strcpy(portStr,str+4);
         int port = atoi(portStr);
@@ -638,7 +637,7 @@ int main(int argc,char* argv[]){
     }
 
     wait(NULL);
-    printf("Closing Connection...\n");// closing pid %d\n",current_pid);
+    printf("Closing Connection...\n");
     close(fds_input[0]);
     close(fds_input[1]);
     close(fds_output[0]);
