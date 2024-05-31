@@ -87,81 +87,6 @@ void uds_tcp_client_socket(char* path,int* fdsArr){
     fdsArr[1] = clientSocket;
 }
 
-void uds_udp_server_socket(char* path,int* fdsArr){
-    unlink(path);
-
-    int serverSocket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (serverSocket == -1) {
-        perror("socket");
-        exit(1);
-    }
-
-    struct sockaddr_un serverAddress;
-    serverAddress.sun_family = AF_UNIX;
-    strcpy(serverAddress.sun_path, path);
-    int bind_result = bind(serverSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress));
-    if (bind_result == -1) {
-        perror("bind");
-        exit(1);
-    }
-
-    printf("UDS-UDP Server is Binding on path: %s...\n",path);
-
-    char buffer[BUFFER_SIZE];
-    struct sockaddr_un clientAddress;
-    socklen_t clientAddressLen = sizeof(clientAddress);
-    int recv_len = recvfrom(serverSocket, buffer, sizeof(buffer) - 1, 0, (struct sockaddr *) &clientAddress,
-                            &clientAddressLen);
-    if (recv_len <= 0) {
-        printf("recvfrom() failed with error code");
-        close(serverSocket);
-        exit(1);
-    }
-
-    int connectResult = connect(serverSocket, (struct sockaddr*) &clientAddress, sizeof(clientAddress));
-    if(connectResult < 0){
-        printf("\n Error : Connect Failed \n");
-        exit(1);
-    }
-    printf("Saved my Client Info!\n");
-
-
-    fdsArr[0] = serverSocket;
-    fdsArr[1] = serverSocket;
-}
-
-void uds_udp_client_socket(char* path,int* fdsArr){
-
-    int clientSocket = socket(AF_UNIX, SOCK_DGRAM, 0);
-    if (clientSocket == -1) {
-        perror("socket");
-        exit(1);
-    }
-
-    struct sockaddr_un serverAddress;
-    serverAddress.sun_family = AF_UNIX;
-    strcpy(serverAddress.sun_path, path);
-
-    char* message = "Hi";
-    int messageLen = strlen(message) + 1;
-    int sendResult = sendto(clientSocket, message, messageLen, 0, (struct sockaddr *) &serverAddress,
-                            sizeof(serverAddress));
-    if (sendResult <= 0) {
-        printf("sendto() failed with error code");
-    }
-
-    // Saves the client credetials for write
-    int connectResult = connect(clientSocket, (struct sockaddr*) &serverAddress, sizeof(serverAddress));
-    if(connectResult < 0){
-        printf("\n Error : Connect Failed \n");
-        exit(1);
-    }
-    printf("Saved my Server Info!\n");
-
-    fdsArr[0] = clientSocket;
-    fdsArr[1] = clientSocket;
-}
-
 void handle_sigchld(int sig) {
     // when signal is alerted do this function, convert pid to client socket
     // and set in poll as assignble with new socket
@@ -490,11 +415,11 @@ int argv_to_socket(char* str, int* fdsArr){
             strcpy(path,str+5);
             if(str[4] == 'S') {
                 uds_tcp_server_socket(path,fdsArr);
+                free(path);
                 return 0;
             }
-            else if(str[4] == 'D'){
-                uds_udp_server_socket(path,fdsArr);
-                return 0;
+            else{
+                free(path);
             }
         }
         // fill port info
@@ -525,10 +450,6 @@ int argv_to_socket(char* str, int* fdsArr){
                 uds_tcp_client_socket(path, fdsArr);
                 return 0;
             }
-            if (str[4] == 'D') {
-                uds_udp_client_socket(path, fdsArr);
-                return 0;
-            }
         }
         // TODO: make code prettier
         char* address;
@@ -556,19 +477,25 @@ int argv_to_socket(char* str, int* fdsArr){
         int port = atoi(portStr);
         if (strcasecmp(protocol,"TCP")==0) {
             tcp_client_socket(port,address,fdsArr);
+            free(address);
+            free(portStr);
             return 0;
         }
         else if(strcasecmp(protocol,"UDP")==0){
             udp_client_socket(port,address,fdsArr);
+            free(address);
+            free(portStr);
             return 0;
         }
         else {
+            free(address);
+            free(portStr);
             exit(1);
         }
     }
 
     if (type == 'M'){
-        char* portStr[10];
+        char portStr[10];
         strcpy(portStr,str+7);
         int port = atoi(portStr);
         tcpmux_server_socket(port,fdsArr);
