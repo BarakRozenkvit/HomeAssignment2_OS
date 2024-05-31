@@ -621,7 +621,7 @@ int main(int argc,char* argv[]){
                 perror("dup2");
                 return 1;
             }
-            execlp(process_path, process_name, process_argv, NULL);
+            execlp(process_name, process_name, process_argv, NULL);
             perror("ttt");
             exit(1);
         }
