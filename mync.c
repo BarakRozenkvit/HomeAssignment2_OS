@@ -531,11 +531,11 @@ int argv_to_socket(char* str, int* fdsArr){
 
 int main(int argc,char* argv[]){
     // String for saving current path of executable
-    char process_path[256] = {'.','/','\0'};
+//    char process_path[256] = {'.','/','\0'};
     //getcwd(process_path,sizeof(process_path));
     // save the process name - ttt and arguments
     char process_name[256] = {'\0'};
-    char process_argv[256];
+    char process_argv[256] ={'\0'};
     // for strok - split string
     char* token;
     // file descriptors for sockets, deafult is STDIN or STDOUT
@@ -558,9 +558,9 @@ int main(int argc,char* argv[]){
                 e_is_declared = 1;
                 token = strsep(&optarg," ");
                 strcat(process_name,token);
-                strcat(process_path,process_name);
+//                strcat(process_path,process_name);
                 token = strsep(&optarg," ");
-                strcat(process_argv,token);
+                strcpy(process_argv,token);
                 break;
 
             case 'i':

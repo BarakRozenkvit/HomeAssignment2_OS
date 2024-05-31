@@ -128,7 +128,6 @@ void ticTacToe(char* stratagy,size_t size) {
 
 int main(int argc, char* argv[]) {
     if(argc != 2){
-        printf("dd");
         perror("Error\n");
         return 1;
     }
