@@ -9,6 +9,7 @@
 #include <poll.h>
 #include <sys/errno.h>
 #include <sys/un.h>
+#include <signal.h>
 
 #define BUFFER_SIZE 16
 #define MAX_SOCKETS 10
@@ -497,7 +498,7 @@ int argv_to_socket(char* str, int* fdsArr){
             }
         }
         // fill port info
-        char* portStr[10];
+        char portStr[10];
         strcpy(portStr,str+4);
         int port = atoi(portStr);
 
