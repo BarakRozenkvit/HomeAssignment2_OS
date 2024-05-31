@@ -394,11 +394,6 @@ void udp_client_socket(int port, char* address, int* fdsArr){
 }
 
 int argv_to_socket(char* str, int* fdsArr){
-    int size = strlen(str);
-    if(size < 7 || size > 20){
-        perror("bad input");
-        exit(1);
-    }
     // UDP/ TCP / TCPMUSX / UDC
     char protocol[4] = {str[0],str[1],str[2],'\0'};
     // C / S / M
@@ -420,10 +415,12 @@ int argv_to_socket(char* str, int* fdsArr){
             }
             else{
                 free(path);
+                exit(1);
             }
         }
+
         // fill port info
-        char portStr[10];
+        char portStr[16];
         strcpy(portStr,str+4);
         int port = atoi(portStr);
 
@@ -435,6 +432,8 @@ int argv_to_socket(char* str, int* fdsArr){
             udp_server_socket(port,fdsArr);
             return 0;
         }
+        else
+            exit(1);
     }
 
     else if(type == 'C'){
@@ -448,65 +447,42 @@ int argv_to_socket(char* str, int* fdsArr){
             strcpy(path, str + 5);
             if (str[4] == 'S') {
                 uds_tcp_client_socket(path, fdsArr);
+                free(path);
                 return 0;
             }
         }
-        // TODO: make code prettier
-        char* address;
-        char* portStr;
-        int sep;
-        for(int i=0;i< strlen(str);i++){
-            if(str[i] == ','){
-                sep = i;
-                break;
-            }
-        }
-        address = (char *) malloc(sizeof(char)*sep-4);
-        if(!address){
-            perror("malloc");
-            return 1;
-        }
-        portStr = (char *) malloc(sizeof(char)* strlen(str)-sep+1);
-        if(!portStr){
-            free(address);
-            perror("malloc");
-            return 1;
-        }
-        strncpy(address,str+4,sizeof(char)*sep-4);
-        strcpy(portStr,str+sep+1);
+
+        char address[16] = {'\0'};
+        char portStr[16] = {'\0'};
+        char* token;
+        token = strsep(&str,",");
+        strcpy(address,token+4);
+        strcpy(portStr,str);
         int port = atoi(portStr);
+
         if (strcasecmp(protocol,"TCP")==0) {
             tcp_client_socket(port,address,fdsArr);
-            free(address);
-            free(portStr);
             return 0;
         }
         else if(strcasecmp(protocol,"UDP")==0){
             udp_client_socket(port,address,fdsArr);
-            free(address);
-            free(portStr);
             return 0;
         }
         else {
-            free(address);
-            free(portStr);
             exit(1);
         }
     }
 
     if (type == 'M'){
-        char portStr[10];
+        char portStr[16];
         strcpy(portStr,str+7);
         int port = atoi(portStr);
         tcpmux_server_socket(port,fdsArr);
         return 0;
     }
-
     else {
         exit(1);
     }
-
-    return 0;
 }
 
 int main(int argc,char* argv[]){
