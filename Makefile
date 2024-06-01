@@ -8,6 +8,7 @@ ttt: ttt.o
 	gcc -Wall ttt.o -o ttt
 
 valgrind: all
+	valgrind --leak-check=full ./ttt
 	valgrind --leak-check=full ./mync
 
 gcov:
