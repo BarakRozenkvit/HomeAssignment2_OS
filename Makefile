@@ -12,10 +12,10 @@ valgrind: all
 	valgrind --leak-check=full ./mync
 
 gcov:
-	gcc -Wall -fprofile-arcs -ftest-coverage -c mync.c
-	gcc -Wall -fprofile-arcs -ftest-coverage -c ttt.c
-	gcc -Wall -fprofile-arcs -ftest-coverage mync.o -o mync
-	gcc -Wall -fprofile-arcs -ftest-coverage ttt.o -o ttt
+	gcc -Wall -g -fprofile-arcs -ftest-coverage -lgcov -c mync.c
+	gcc -Wall -g -fprofile-arcs -ftest-coverage -lgcov -c ttt.c
+	gcc -Wall -g -fprofile-arcs -ftest-coverage -lgcov mync.o -o mync
+	gcc -Wall -g -fprofile-arcs -ftest-coverage -lgcov ttt.o -o ttt
 
 mync.o: mync.c
 	gcc -Wall -c mync.c
